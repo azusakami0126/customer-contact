@@ -90,6 +90,12 @@ DB_COMPANY_PATH = "./.db_company"
 
 
 # ==========================================
+# データ項目名
+# ==========================================
+EMPLOYEE_ID_TEXT = "従業員ID"
+NAME_TEXT = "名前"
+
+# ==========================================
 # AIエージェント関連
 # ==========================================
 AI_AGENT_MAX_ITERATIONS = 5
@@ -117,6 +123,8 @@ SEARCH_CUSTOMER_COMMUNICATION_INFO_TOOL_NAME = "search_customer_communication_to
 SEARCH_CUSTOMER_COMMUNICATION_INFO_TOOL_DESCRIPTION = "顧客とのやりとりに関する情報を参照したい時に使う"
 SEARCH_WEB_INFO_TOOL_NAME = "search_web_tool"
 SEARCH_WEB_INFO_TOOL_DESCRIPTION = "自社サービス「HealthX」に関する質問で、Web検索が必要と判断した場合に使う"
+GET_CURRENT_DATETIME_TOOL_NAME = "get_current_time_tool"
+GET_CURRENT_DATETIME_TOOL_DESCRIPTION = "現在の日付、時刻、曜日を確認するために使う。引数(Action Input)には、何でも良いので文字列を一つ渡すこと。"
 
 
 # ==========================================
@@ -158,7 +166,8 @@ SYSTEM_PROMPT_EMPLOYEE_SELECTION = """
     以下の「従業員情報」は、問い合わせに対しての一人以上の対応者候補のデータです。
     しかし、問い合わせ内容との関連性が薄い従業員情報が含まれている可能性があります。
     以下の「条件」に従い、従業員情報の中から、問い合わせ内容との関連性が特に高いと思われる
-    従業員の「ID」をカンマ区切りで返してください。
+    従業員の「ID」を選定してください。
+    選定した従業員IDとその選定理由を出力フォーマットに従って返してください。
 
     # 顧客からの問い合わせ
     {query}
@@ -236,6 +245,11 @@ SYSTEM_PROMPT_NOTICE_SLACK = """
     ・カテゴリ: 
     ・問い合わせ者: 山田太郎
     ・日時: {now_datetime}
+
+    --------------------
+
+    【メンション先の選定理由】
+    {select_reasons}
 
     --------------------
 

@@ -148,7 +148,13 @@ def initialize_agent_executor():
             name = ct.SEARCH_WEB_INFO_TOOL_NAME,
             func=search.run,
             description=ct.SEARCH_WEB_INFO_TOOL_DESCRIPTION
-        )
+        ),
+        # 現在時刻をLLMが理解しやすい形式で返すTool
+        Tool(
+            name=ct.GET_CURRENT_DATETIME_TOOL_NAME,
+            func=utils.get_current_time,
+            description=ct.GET_CURRENT_DATETIME_TOOL_DESCRIPTION
+        ),
     ]
 
     # Agent Executorの作成

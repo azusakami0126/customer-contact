@@ -162,9 +162,11 @@ cython_debug/
 #.idea/
 
 # original
+.db/
 .db_all/
 .db_company/
 .db_customer/
 .db_service/
 .chroma/
 logs/
+.vscode/

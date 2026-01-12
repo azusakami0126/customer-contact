@@ -28,8 +28,9 @@ from langchain_community.document_loaders.csv_loader import CSVLoader
 from langchain_community.retrievers import BM25Retriever
 from langchain.retrievers import EnsembleRetriever
 from docx import Document
-from langchain.output_parsers import CommaSeparatedListOutputParser
+# from langchain.output_parsers import CommaSeparatedListOutputParser
 from langchain import LLMChain
+from langchain.output_parsers import ResponseSchema, StructuredOutputParser
 import datetime
 import constants as ct
 
@@ -100,9 +101,9 @@ def create_rag_chain(db_name):
 
     # すでに対象のデータベースが作成済みの場合は読み込み、未作成の場合は新規作成する
     if os.path.isdir(db_name):
-        db = Chroma(persist_directory=".db", embedding_function=embeddings)
+        db = Chroma(persist_directory=db_name, embedding_function=embeddings)
     else:
-        db = Chroma.from_documents(splitted_docs, embedding=embeddings, persist_directory=".db")
+        db = Chroma.from_documents(splitted_docs, embedding=embeddings, persist_directory=db_name)
     retriever = db.as_retriever(search_kwargs={"k": ct.TOP_K})
 
     question_generator_template = ct.SYSTEM_PROMPT_CREATE_INDEPENDENT_TEXT
@@ -332,13 +333,23 @@ def notice_slack(chat_message):
         ("system", ct.SYSTEM_PROMPT_EMPLOYEE_SELECTION)
     ])
     # フォーマット文字列を生成
-    output_parser = CommaSeparatedListOutputParser()
+    response_schemas = [
+        ResponseSchema(
+            name="selections", 
+            description="選定された従業員のリスト。各要素は 'employee_id' と 'reason' の2つのキーを持つオブジェクトにしてください。"
+        )
+    ]
+    output_parser = StructuredOutputParser.from_response_schemas(response_schemas)
     format_instruction = output_parser.get_format_instructions()
 
     # 問い合わせ内容と関連性が高い従業員のID一覧を取得
     messages = prompt_template.format_prompt(context=context, query=chat_message, format_instruction=format_instruction).to_messages()
-    employee_id_response = st.session_state.llm(messages)
-    employee_ids = output_parser.parse(employee_id_response.content)
+    employee_selections_response = st.session_state.llm(messages)
+    employee_selections = output_parser.parse(employee_selections_response.content)
+
+    employee_ids = []
+    for id_reason in employee_selections["selections"]:
+        employee_ids.append(id_reason["employee_id"])
 
     # 問い合わせ内容と関連性が高い従業員情報を、IDで照合して取得
     target_employees = get_target_employees(employees, employee_ids)
@@ -355,12 +366,21 @@ def notice_slack(chat_message):
     # 現在日時を取得
     now_datetime = get_datetime()
 
+    # プロンプトに埋め込むための選定理由テキストを取得
+    select_reasons = get_select_reasons(employee_selections["selections"], target_employees)
+
     # Slack通知用のプロンプト生成
     prompt = PromptTemplate(
-        input_variables=["slack_id_text", "query", "context", "now_datetime"],
+        input_variables=["slack_id_text", "query", "context", "now_datetime", "select_reasons"],
         template=ct.SYSTEM_PROMPT_NOTICE_SLACK,
     )
-    prompt_message = prompt.format(slack_id_text=slack_id_text, query=chat_message, context=context, now_datetime=now_datetime)
+    prompt_message = prompt.format(
+        slack_id_text=slack_id_text,
+        query=chat_message,
+        context=context,
+        now_datetime=now_datetime,
+        select_reasons=select_reasons
+    )
 
     # Slack通知の実行
     agent_executor.invoke({"input": prompt_message})
@@ -565,3 +585,52 @@ def adjust_string(s):
     
     # OSがWindows以外の場合はそのまま返す
     return s
+
+
+def get_select_reasons(id_reasons, employees):
+    """
+    プロンプトに埋め込むための選定理由テキストの生成
+
+    Args:
+        id_reasons: 選定した従業員ID、選定理由のリスト
+        employees: 従業員情報
+
+    Returns:
+        生成した選定理由テキスト
+    """
+    name = ""
+    result_text = ""
+    for id_reason in id_reasons:
+        for employee in employees:
+            employee_index = employee.page_content.find(ct.EMPLOYEE_ID_TEXT)
+            employee_id = employee.page_content[employee_index+len(ct.EMPLOYEE_ID_TEXT)+2:].split("\n")[0]
+
+            # 従業員IDが一致する従業員の名前を取得
+            if id_reason["employee_id"] == employee_id:
+                name_index = employee.page_content.find(ct.NAME_TEXT)
+                name = employee.page_content[name_index+len(ct.NAME_TEXT)+2:].split("\n")[0]
+                break
+        
+        result_text += f"{name}さんは、"
+        result_text += f"{id_reason['reason']}\n"
+
+    return result_text
+
+
+def get_current_time(query):
+    """
+    現在時刻をLLMが理解しやすい形式で返す
+
+    Args:
+        query: ※未使用
+    
+    Returns:
+        現在時刻 xxxx年xx月xx日（曜日） xx時xx分
+    """
+    now = datetime.datetime.now()
+    
+    # 曜日を日本語で取得
+    weeks = ["月", "火", "水", "木", "金", "土", "日"]
+    w = weeks[now.weekday()]
+
+    return now.strftime(f"%Y年%m月%d日（{w}） %H時%M分")
